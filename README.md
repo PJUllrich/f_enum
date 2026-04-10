@@ -2,8 +2,6 @@
 
 A drop-in replacement for `Enum` backed by Rust NIFs. Simply rename `Enum` to `FEnum` and your integer-list code gets up to 20x faster. For chained operations, you can get even bigger speedups.
 
-All you need to do is to replace `Enum` with `FEnum` and your list and binary operations will run ✨magically✨ faster for many use-cases.
-
 This library is really only needed if you work with very large lists or binaries though. The built-in Enum is just fine for any lists below 1000 elements.
 
 ## Installation
