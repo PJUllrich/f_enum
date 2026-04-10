@@ -25,12 +25,12 @@ defmodule FEnum do
   @spec new(list(integer()) | binary()) :: Ref.t()
   def new(list) when is_list(list) do
     resource = Native.nif_new(list)
-    %Ref{resource: resource, length: length(list)}
+    %Ref{resource: resource, length: Native.nif_length(resource)}
   end
 
   def new(binary) when is_binary(binary) do
     resource = Native.nif_new_from_binary(binary)
-    %Ref{resource: resource, length: Native.nif_length(resource)}
+    %Ref{resource: resource, length: div(byte_size(binary), 8)}
   end
 
   @doc "Materializes an `FEnum.Ref` back into a regular Elixir list."
@@ -41,9 +41,14 @@ defmodule FEnum do
   @spec to_list(Ref.t()) :: list(integer())
   def to_list(%Ref{} = ref), do: run(ref)
 
-  # Helper to wrap a NIF result back into a Ref
+  # Helpers to wrap NIF results into a Ref.
+  # Use wrap_ref_same_len when the operation preserves length (sort, reverse).
+  # Use wrap_ref when the length may change (dedup, uniq, slice, take, drop).
   defp wrap_ref(resource) do
-    len = Native.nif_length(resource)
+    %Ref{resource: resource, length: Native.nif_length(resource)}
+  end
+
+  defp wrap_ref_same_len(resource, len) do
     %Ref{resource: resource, length: len}
   end
 
@@ -53,15 +58,15 @@ defmodule FEnum do
 
   @doc "Sorts in ascending order."
   @spec sort(Ref.t() | list() | binary()) :: Ref.t() | list() | binary()
-  def sort(%Ref{resource: r}), do: wrap_ref(Native.nif_sort_asc(r))
+  def sort(%Ref{resource: r, length: len}), do: wrap_ref_same_len(Native.nif_sort_asc(r), len)
   def sort(bin) when is_binary(bin), do: Native.nif_sort_asc_binary(bin)
   def sort(list) when is_list(list), do: Native.nif_sort_asc_list(list)
   def sort(enumerable), do: Enum.sort(enumerable)
 
   @doc "Sorts in the given order (`:asc` or `:desc`)."
   @spec sort(Ref.t() | list() | binary(), :asc | :desc) :: Ref.t() | list() | binary()
-  def sort(%Ref{resource: r}, :asc), do: wrap_ref(Native.nif_sort_asc(r))
-  def sort(%Ref{resource: r}, :desc), do: wrap_ref(Native.nif_sort_desc(r))
+  def sort(%Ref{resource: r, length: len}, :asc), do: wrap_ref_same_len(Native.nif_sort_asc(r), len)
+  def sort(%Ref{resource: r, length: len}, :desc), do: wrap_ref_same_len(Native.nif_sort_desc(r), len)
   def sort(bin, :asc) when is_binary(bin), do: Native.nif_sort_asc_binary(bin)
   def sort(bin, :desc) when is_binary(bin), do: Native.nif_sort_desc_binary(bin)
   def sort(list, :asc) when is_list(list), do: Native.nif_sort_asc_list(list)
@@ -70,7 +75,7 @@ defmodule FEnum do
 
   @doc "Reverses the collection."
   @spec reverse(Ref.t() | list() | binary()) :: Ref.t() | list() | binary()
-  def reverse(%Ref{resource: r}), do: wrap_ref(Native.nif_reverse(r))
+  def reverse(%Ref{resource: r, length: len}), do: wrap_ref_same_len(Native.nif_reverse(r), len)
   def reverse(bin) when is_binary(bin), do: Native.nif_reverse_binary(bin)
   def reverse(enumerable), do: Enum.reverse(enumerable)
 
@@ -124,7 +129,7 @@ defmodule FEnum do
   @doc "Returns the count of elements."
   @spec count(Ref.t() | list() | binary()) :: non_neg_integer()
   def count(%Ref{length: len}), do: len
-  def count(bin) when is_binary(bin), do: Native.nif_count_binary(bin)
+  def count(bin) when is_binary(bin), do: div(byte_size(bin), 8)
   def count(list) when is_list(list), do: length(list)
   def count(enumerable), do: Enum.count(enumerable)
 
@@ -135,7 +140,20 @@ defmodule FEnum do
   @doc "Returns the element at `index`, or `nil` if out of bounds."
   @spec at(Ref.t() | list() | binary(), integer()) :: integer() | nil
   def at(%Ref{resource: r}, index), do: Native.nif_at(r, index)
-  def at(bin, index) when is_binary(bin), do: Native.nif_at_binary(bin, index)
+
+  def at(bin, index) when is_binary(bin) and index >= 0 do
+    offset = index * 8
+
+    case bin do
+      <<_::binary-size(offset), value::signed-native-64, _::binary>> -> value
+      _ -> nil
+    end
+  end
+
+  def at(bin, index) when is_binary(bin) do
+    at(bin, div(byte_size(bin), 8) + index)
+  end
+
   def at(enumerable, index), do: Enum.at(enumerable, index)
 
   @doc "Returns the element at `index`. Raises `Enum.OutOfBoundsError` if out of bounds."
@@ -160,41 +178,60 @@ defmodule FEnum do
   @spec slice(Ref.t() | list() | binary(), Range.t()) :: Ref.t() | list() | binary()
   def slice(%Ref{resource: r, length: len}, first..last//step) do
     {start, count} = range_to_start_count(first, last, step, len)
-    wrap_ref(Native.nif_slice(r, start, count))
+    wrap_ref_same_len(Native.nif_slice(r, start, count), count)
   end
 
   def slice(bin, first..last//step) when is_binary(bin) do
     len = div(byte_size(bin), 8)
     {start, count} = range_to_start_count(first, last, step, len)
-    Native.nif_slice_binary(bin, start, count)
+    binary_part(bin, start * 8, count * 8)
   end
 
   def slice(enumerable, range), do: Enum.slice(enumerable, range)
 
-  defp range_to_start_count(first, last, 1, len) do
+  defp range_to_start_count(first, last, _step, len) do
     first = if first < 0, do: max(len + first, 0), else: first
     last = if last < 0, do: len + last, else: last
     count = max(last - first + 1, 0)
     {first, count}
   end
 
-  defp range_to_start_count(first, last, _step, len) do
-    first_norm = if first < 0, do: max(len + first, 0), else: first
-    last_norm = if last < 0, do: len + last, else: last
-    count = max(last_norm - first_norm + 1, 0)
-    {first_norm, count}
-  end
-
   @doc "Takes `count` elements from the beginning (positive) or end (negative)."
   @spec take(Ref.t() | list() | binary(), integer()) :: Ref.t() | list() | binary()
-  def take(%Ref{resource: r}, count), do: wrap_ref(Native.nif_take(r, count))
-  def take(bin, count) when is_binary(bin), do: Native.nif_take_binary(bin, count)
+  def take(%Ref{resource: r, length: len}, count) do
+    out_len = min(if(count >= 0, do: count, else: -count), len)
+    wrap_ref_same_len(Native.nif_take(r, count), out_len)
+  end
+
+  def take(bin, count) when is_binary(bin) and count >= 0 do
+    n = min(count * 8, byte_size(bin))
+    binary_part(bin, 0, n)
+  end
+
+  def take(bin, count) when is_binary(bin) do
+    n = min(-count * 8, byte_size(bin))
+    binary_part(bin, byte_size(bin) - n, n)
+  end
+
   def take(enumerable, count), do: Enum.take(enumerable, count)
 
   @doc "Drops `count` elements from the beginning (positive) or end (negative)."
   @spec drop(Ref.t() | list() | binary(), integer()) :: Ref.t() | list() | binary()
-  def drop(%Ref{resource: r}, count), do: wrap_ref(Native.nif_drop(r, count))
-  def drop(bin, count) when is_binary(bin), do: Native.nif_drop_binary(bin, count)
+  def drop(%Ref{resource: r, length: len}, count) do
+    out_len = max(len - min(if(count >= 0, do: count, else: -count), len), 0)
+    wrap_ref_same_len(Native.nif_drop(r, count), out_len)
+  end
+
+  def drop(bin, count) when is_binary(bin) and count >= 0 do
+    n = min(count * 8, byte_size(bin))
+    binary_part(bin, n, byte_size(bin) - n)
+  end
+
+  def drop(bin, count) when is_binary(bin) do
+    n = min(-count * 8, byte_size(bin))
+    binary_part(bin, 0, byte_size(bin) - n)
+  end
+
   def drop(enumerable, count), do: Enum.drop(enumerable, count)
 
   @doc "Checks if `value` exists in the collection."
@@ -219,7 +256,8 @@ defmodule FEnum do
 
   @doc "Concatenates two collections."
   @spec concat(Ref.t() | list() | binary(), Ref.t() | list() | binary()) :: Ref.t() | list() | binary()
-  def concat(%Ref{resource: r1}, %Ref{resource: r2}), do: wrap_ref(Native.nif_concat(r1, r2))
+  def concat(%Ref{resource: r1, length: l1}, %Ref{resource: r2, length: l2}),
+    do: wrap_ref_same_len(Native.nif_concat(r1, r2), l1 + l2)
 
   def concat(%Ref{} = ref, list) when is_list(list),
     do: concat(ref, new(list))
@@ -228,7 +266,7 @@ defmodule FEnum do
     do: concat(new(list), ref)
 
   def concat(bin1, bin2) when is_binary(bin1) and is_binary(bin2),
-    do: Native.nif_concat_binary(bin1, bin2)
+    do: <<bin1::binary, bin2::binary>>
 
   def concat(list1, list2) when is_list(list1) and is_list(list2),
     do: list1 ++ list2
