@@ -1,0 +1,17 @@
+.devcontainer/
+Makefile
+
+# Elixir
+/_build/
+/deps/
+*.ez
+*.beam
+/doc/
+erl_crash.dump
+
+# Rust / Rustler
+/native/*/target/
+/priv/native/
+
+# Benchmarks output
+/bench/output/
