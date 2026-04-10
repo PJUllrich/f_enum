@@ -1,4 +1,4 @@
-# FEnum
+# Faster Enum
 
 A drop-in replacement for `Enum` backed by Rust NIFs. Simply rename `Enum` to `FEnum` and your integer-list code gets up to 20x faster. For chained operations, you can get even bigger speedups.
 
