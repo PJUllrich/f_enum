@@ -66,19 +66,26 @@ defmodule FEnum do
   @spec sort(Ref.t() | list() | binary()) :: Ref.t() | list() | binary()
   def sort(%Ref{resource: r, length: len}), do: wrap_ref_same_len(Native.nif_sort_asc(r), len)
   def sort(bin) when is_binary(bin), do: Native.nif_sort_asc_binary(bin)
+
   def sort(list) when is_list(list) do
     Native.nif_sort_asc_list(list)
   rescue
     ArgumentError -> Enum.sort(list)
   end
+
   def sort(enumerable), do: Enum.sort(enumerable)
 
   @doc "Sorts in the given order (`:asc` or `:desc`)."
   @spec sort(Ref.t() | list() | binary(), :asc | :desc) :: Ref.t() | list() | binary()
-  def sort(%Ref{resource: r, length: len}, :asc), do: wrap_ref_same_len(Native.nif_sort_asc(r), len)
-  def sort(%Ref{resource: r, length: len}, :desc), do: wrap_ref_same_len(Native.nif_sort_desc(r), len)
+  def sort(%Ref{resource: r, length: len}, :asc),
+    do: wrap_ref_same_len(Native.nif_sort_asc(r), len)
+
+  def sort(%Ref{resource: r, length: len}, :desc),
+    do: wrap_ref_same_len(Native.nif_sort_desc(r), len)
+
   def sort(bin, :asc) when is_binary(bin), do: Native.nif_sort_asc_binary(bin)
   def sort(bin, :desc) when is_binary(bin), do: Native.nif_sort_desc_binary(bin)
+
   def sort(list, :asc) when is_list(list) do
     Native.nif_sort_asc_list(list)
   rescue
@@ -90,6 +97,7 @@ defmodule FEnum do
   rescue
     ArgumentError -> Enum.sort(list, :desc)
   end
+
   def sort(enumerable, order), do: Enum.sort(enumerable, order)
 
   @doc "Reverses the collection."
@@ -108,11 +116,13 @@ defmodule FEnum do
   @spec uniq(Ref.t() | list() | binary()) :: Ref.t() | list() | binary()
   def uniq(%Ref{resource: r}), do: wrap_ref(Native.nif_uniq(r))
   def uniq(bin) when is_binary(bin), do: Native.nif_uniq_binary(bin)
+
   def uniq(list) when is_list(list) do
     Native.nif_uniq_list(list)
   rescue
     ArgumentError -> Enum.uniq(list)
   end
+
   def uniq(enumerable), do: Enum.uniq(enumerable)
 
   # ---------------------------------------------------------------------------
@@ -146,7 +156,10 @@ defmodule FEnum do
   @doc "Returns `{min, max}` tuple. Raises `Enum.EmptyError` if empty."
   @spec min_max(Ref.t() | list() | binary()) :: {integer(), integer()}
   def min_max(%Ref{resource: r}), do: Native.nif_min_max(r) || raise(Enum.EmptyError)
-  def min_max(bin) when is_binary(bin), do: Native.nif_min_max_binary(bin) || raise(Enum.EmptyError)
+
+  def min_max(bin) when is_binary(bin),
+    do: Native.nif_min_max_binary(bin) || raise(Enum.EmptyError)
+
   def min_max(enumerable), do: Enum.min_max(enumerable)
 
   @doc "Returns the count of elements."
@@ -278,7 +291,8 @@ defmodule FEnum do
   # ---------------------------------------------------------------------------
 
   @doc "Concatenates two collections."
-  @spec concat(Ref.t() | list() | binary(), Ref.t() | list() | binary()) :: Ref.t() | list() | binary()
+  @spec concat(Ref.t() | list() | binary(), Ref.t() | list() | binary()) ::
+          Ref.t() | list() | binary()
   def concat(%Ref{resource: r1, length: l1}, %Ref{resource: r2, length: l2}),
     do: wrap_ref_same_len(Native.nif_concat(r1, r2), l1 + l2)
 
@@ -300,11 +314,13 @@ defmodule FEnum do
   @spec frequencies(Ref.t() | list() | binary()) :: map()
   def frequencies(%Ref{resource: r}), do: Native.nif_frequencies(r)
   def frequencies(bin) when is_binary(bin), do: Native.nif_frequencies_binary(bin)
+
   def frequencies(list) when is_list(list) do
     Native.nif_frequencies_list(list)
   rescue
     ArgumentError -> Enum.frequencies(list)
   end
+
   def frequencies(enumerable), do: Enum.frequencies(enumerable)
 
   @doc "Joins elements into a string with the given separator."
@@ -322,7 +338,8 @@ defmodule FEnum do
   def with_index(enumerable, offset), do: Enum.with_index(enumerable, offset)
 
   @doc "Zips two collections into a list of `{a, b}` tuples."
-  @spec zip(Ref.t() | list() | binary(), Ref.t() | list() | binary()) :: list({integer(), integer()})
+  @spec zip(Ref.t() | list() | binary(), Ref.t() | list() | binary()) ::
+          list({integer(), integer()})
   def zip(%Ref{resource: r1}, %Ref{resource: r2}), do: Native.nif_zip(r1, r2)
 
   def zip(%Ref{} = ref, list) when is_list(list),
@@ -383,7 +400,8 @@ defmodule FEnum do
   def reduce(enumerable, acc, fun), do: Enum.reduce(enumerable, acc, fun)
 
   @doc "Applies `fun` to each element, accumulating results and a final accumulator."
-  @spec map_reduce(Ref.t() | list(), term(), (integer(), term() -> {term(), term()})) :: {list(), term()}
+  @spec map_reduce(Ref.t() | list(), term(), (integer(), term() -> {term(), term()})) ::
+          {list(), term()}
   def map_reduce(%Ref{} = ref, acc, fun), do: ref |> run() |> Enum.map_reduce(acc, fun)
   def map_reduce(list, acc, fun) when is_list(list), do: Enum.map_reduce(list, acc, fun)
   def map_reduce(enumerable, acc, fun), do: Enum.map_reduce(enumerable, acc, fun)

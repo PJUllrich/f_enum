@@ -1,5 +1,3 @@
-
-
 defmodule FFEnum.EnumCompatTest do
   use ExUnit.Case, async: true
 
@@ -50,13 +48,19 @@ defmodule FFEnum.EnumCompatTest do
 
     test "lists work" do
       enums = [[1, 1], [2, 2], [3, 3]]
-      result = FEnum.zip_reduce(enums, [], fn elements, acc -> [List.to_tuple(elements) | acc] end)
+
+      result =
+        FEnum.zip_reduce(enums, [], fn elements, acc -> [List.to_tuple(elements) | acc] end)
+
       assert result == [{1, 2, 3}, {1, 2, 3}]
     end
 
     test "mix and match" do
       enums = [[1, 2], 3..4, [5, 6]]
-      result = FEnum.zip_reduce(enums, [], fn elements, acc -> [List.to_tuple(elements) | acc] end)
+
+      result =
+        FEnum.zip_reduce(enums, [], fn elements, acc -> [List.to_tuple(elements) | acc] end)
+
       assert result == [{2, 4, 6}, {1, 3, 5}]
     end
   end
@@ -213,7 +217,9 @@ defmodule FFEnum.EnumCompatTest do
   end
 
   test "count_until/2 with streams" do
-    count_until_stream = fn list, limit -> list |> Stream.map(& &1) |> FEnum.count_until(limit) end
+    count_until_stream = fn list, limit ->
+      list |> Stream.map(& &1) |> FEnum.count_until(limit)
+    end
 
     assert count_until_stream.([1, 2, 3], 2) == 2
     assert count_until_stream.([], 2) == 0
@@ -759,7 +765,8 @@ defmodule FFEnum.EnumCompatTest do
     assert FEnum.min_max_by(%{}, fn x -> String.length(x) end, fn -> {:no_min, :no_max} end) ==
              {:no_min, :no_max}
 
-    assert FEnum.min_max_by(["aaa", "a", "aa"], fn x -> String.length(x) end, &>/2) == {"aaa", "a"}
+    assert FEnum.min_max_by(["aaa", "a", "aa"], fn x -> String.length(x) end, &>/2) ==
+             {"aaa", "a"}
 
     assert_runs_enumeration_only_once(&FEnum.min_max_by(&1, fn x -> x end, fn -> nil end))
   end
@@ -1705,7 +1712,12 @@ defmodule FFEnum.EnumCompatTest do
     # Ranges
     assert FEnum.zip_with([1..6, 3..4], fn [a, b] -> a + b end) == [4, 6]
     assert FEnum.zip_with([[1, 2, 5, 6], 3..4], fn [a, b] -> a + b end) == [4, 6]
-    assert FEnum.zip_with([fn _, _ -> {:cont, [1, 2]} end, 3..4], fn [a, b] -> a + b end) == [4, 6]
+
+    assert FEnum.zip_with([fn _, _ -> {:cont, [1, 2]} end, 3..4], fn [a, b] -> a + b end) == [
+             4,
+             6
+           ]
+
     assert FEnum.zip_with([1..1, 0..0], fn [a, b] -> a + b end) == [1]
 
     # Date.range

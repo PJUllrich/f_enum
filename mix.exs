@@ -14,7 +14,8 @@ defmodule FEnum.MixProject do
       package: package(),
       docs: docs(),
       name: "FEnum",
-      description: "A drop-in replacement for Enum backed by Rust NIFs. Up to 10x faster sorting, 6x faster uniq, and near-zero memory allocation for integer lists.",
+      description:
+        "A drop-in replacement for Enum backed by Rust NIFs. Up to 10x faster sorting, 6x faster uniq, and near-zero memory allocation for integer lists.",
       source_url: @source_url,
       homepage_url: @source_url
     ]
