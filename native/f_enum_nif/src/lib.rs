@@ -1,6 +1,5 @@
-use rustler::{Binary, OwnedBinary, ResourceArc};
+use rustler::{Binary, Encoder, Env, OwnedBinary, ResourceArc, Term};
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
 // Resource: lock-free immutable storage
@@ -44,11 +43,9 @@ macro_rules! as_i64_slice {
     ($binary:expr) => {{
         let data = $binary.as_slice();
         let n = data.len() / I64_SIZE;
-        if n == 0 {
-            &[] as &[i64]
-        } else {
-            unsafe { std::slice::from_raw_parts(data.as_ptr() as *const i64, n) }
-        }
+        // SAFETY: as_ptr() returns a valid, aligned pointer even for empty slices
+        // (dangling but non-null). from_raw_parts with n=0 is defined behavior.
+        unsafe { std::slice::from_raw_parts(data.as_ptr() as *const i64, n) }
     }};
 }
 
@@ -123,10 +120,27 @@ fn minmax(slice: &[i64]) -> Option<(i64, i64)> {
     Some((lo, hi))
 }
 
-/// Build a frequency map using FxHash (fast integer hashing), then convert
-/// to std HashMap for Rustler encoding (Rustler implements Encoder for std HashMap).
+/// Wrapper around FxHashMap that implements Encoder directly, avoiding the
+/// O(n) rehash conversion to std HashMap.
+struct FrequencyMap(FxHashMap<i64, usize>);
+
+impl Encoder for FrequencyMap {
+    fn encode<'c>(&self, env: Env<'c>) -> Term<'c> {
+        // Pre-encode to Term arrays directly, avoiding the extra Vec allocation
+        // that map_from_arrays does internally when encoding from &[impl Encoder].
+        let n = self.0.len();
+        let mut keys = Vec::with_capacity(n);
+        let mut values = Vec::with_capacity(n);
+        for (&k, &v) in &self.0 {
+            keys.push(k.encode(env));
+            values.push(v.encode(env));
+        }
+        Term::map_from_term_arrays(env, &keys, &values).unwrap()
+    }
+}
+
 #[inline]
-fn frequencies_impl(slice: &[i64]) -> HashMap<i64, usize> {
+fn frequencies_impl(slice: &[i64]) -> FrequencyMap {
     let mut map: FxHashMap<i64, usize> = FxHashMap::with_capacity_and_hasher(
         slice.len() / 4,
         Default::default(),
@@ -134,8 +148,7 @@ fn frequencies_impl(slice: &[i64]) -> HashMap<i64, usize> {
     for &v in slice {
         *map.entry(v).or_insert(0) += 1;
     }
-    // Convert to std HashMap for Rustler encoding
-    map.into_iter().collect()
+    FrequencyMap(map)
 }
 
 /// Fast i64 to string using itoa, write into a String buffer.
@@ -234,7 +247,10 @@ fn nif_dedup(resource: ResourceArc<VecResource>) -> ResourceArc<VecResource> {
 fn nif_uniq(resource: ResourceArc<VecResource>) -> ResourceArc<VecResource> {
     let s = as_slice(&resource);
     let mut seen = FxHashSet::with_capacity_and_hasher(s.len() / 2, Default::default());
-    let result: Vec<i64> = s.iter().copied().filter(|x| seen.insert(*x)).collect();
+    let mut result = Vec::with_capacity(s.len());
+    for &v in s {
+        if seen.insert(v) { result.push(v); }
+    }
     wrap(result)
 }
 
@@ -291,7 +307,10 @@ fn nif_dedup_binary(binary: Binary) -> OwnedBinary {
 fn nif_uniq_binary(binary: Binary) -> OwnedBinary {
     let slice = as_i64_slice!(binary);
     let mut seen = FxHashSet::with_capacity_and_hasher(slice.len() / 2, Default::default());
-    let result: Vec<i64> = slice.iter().copied().filter(|x| seen.insert(*x)).collect();
+    let mut result = Vec::with_capacity(slice.len());
+    for &v in slice {
+        if seen.insert(v) { result.push(v); }
+    }
     slice_to_binary(&result)
 }
 
@@ -476,7 +495,7 @@ fn nif_concat(resource: ResourceArc<VecResource>, other: ResourceArc<VecResource
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
-fn nif_frequencies(resource: ResourceArc<VecResource>) -> HashMap<i64, usize> {
+fn nif_frequencies(resource: ResourceArc<VecResource>) -> FrequencyMap {
     frequencies_impl(as_slice(&resource))
 }
 
@@ -545,7 +564,7 @@ fn nif_concat_binary(binary1: Binary, binary2: Binary) -> OwnedBinary {
 }
 
 #[rustler::nif(schedule = "DirtyCpu")]
-fn nif_frequencies_binary(binary: Binary) -> HashMap<i64, usize> {
+fn nif_frequencies_binary(binary: Binary) -> FrequencyMap {
     frequencies_impl(as_i64_slice!(binary))
 }
 
@@ -605,9 +624,12 @@ fn nif_reverse_list(list: Vec<i64>) -> Vec<i64> { let mut v = list; v.reverse();
 fn nif_dedup_list(list: Vec<i64>) -> Vec<i64> { let mut v = list; v.dedup(); v }
 #[rustler::nif(schedule = "DirtyCpu")]
 fn nif_uniq_list(list: Vec<i64>) -> Vec<i64> {
-    let cap = list.len() / 2;
-    let mut seen = FxHashSet::with_capacity_and_hasher(cap, Default::default());
-    list.into_iter().filter(|x| seen.insert(*x)).collect()
+    let mut seen = FxHashSet::with_capacity_and_hasher(list.len() / 2, Default::default());
+    let mut result = Vec::with_capacity(list.len());
+    for v in list {
+        if seen.insert(v) { result.push(v); }
+    }
+    result
 }
 #[rustler::nif]
 fn nif_sum_list(list: Vec<i64>) -> i64 { list.iter().copied().fold(0i64, |a, b| a.wrapping_add(b)) }
@@ -653,7 +675,7 @@ fn nif_concat_list(list1: Vec<i64>, list2: Vec<i64>) -> Vec<i64> {
     r
 }
 #[rustler::nif(schedule = "DirtyCpu")]
-fn nif_frequencies_list(list: Vec<i64>) -> HashMap<i64, usize> {
+fn nif_frequencies_list(list: Vec<i64>) -> FrequencyMap {
     frequencies_impl(&list)
 }
 #[rustler::nif(schedule = "DirtyCpu")]
