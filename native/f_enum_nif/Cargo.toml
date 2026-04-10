@@ -10,3 +10,10 @@ crate-type = ["cdylib"]
 
 [dependencies]
 rustler = "0.37"
+rustc-hash = "2"
+itoa = "1"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1

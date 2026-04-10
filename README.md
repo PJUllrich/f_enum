@@ -1,6 +1,6 @@
 # FEnum
 
-A drop-in replacement for `Enum` backed by Rust NIFs. Simply fename `Enum` to `FEnum` and your integer-list code gets up to 6x faster. For chained operations, you can get even bigger speedups.
+A drop-in replacement for `Enum` backed by Rust NIFs. Simply rename `Enum` to `FEnum` and your integer-list code gets up to 20x faster. For chained operations, you can get even bigger speedups.
 
 ## How it works
 
@@ -111,40 +111,40 @@ List input delegates to `Enum` for simple traversals (sum, min, max, reverse, me
 
 | Function | Enum ips | FEnum ips | Avg time | Speedup | Enum memory | FEnum memory | Mem reduction |
 |---|---|---|---|---|---|---|---|
-| sort | 9.08 | 51.63 | 19.37 ms | 5.69x | 205.88 MB | 0 B | ~100% |
-| sort :desc | 9.01 | 51.72 | 19.33 ms | 5.74x | 220.49 MB | 0 B | ~100% |
-| uniq | 4.00 | 20.54 | 48.69 ms | 5.14x | 374.00 MB | 0 B | ~100% |
-| frequencies | 2.71 | 8.57 | 116.65 ms | 3.16x | 547.89 MB | 0.56 MB | 99.9% |
-| reverse | 900.98 | 882.30 | 1.13 ms | =Enum | 11.01 MB | 11.01 MB | -- |
-| dedup | 132.57 | 135.79 | 7.36 ms | =Enum | 16.94 MB | 16.94 MB | -- |
-| sum | 618.69 | 617.77 | 1.62 ms | =Enum | 0 B | 0 B | -- |
-| min | 623.28 | 629.74 | 1.59 ms | =Enum | 0 B | 0 B | -- |
-| max | 624.64 | 631.40 | 1.58 ms | =Enum | 0 B | 0 B | -- |
-| member? | 1,680 | 1,730 | 576.86 μs | =Enum | 0 B | 0 B | -- |
+| sort | 9.12 | 55.60 | 18.0 ms | 6.10x | 218.34 MB | 0 B | ~100% |
+| sort :desc | 9.45 | 55.47 | 18.0 ms | 5.87x | 233.59 MB | 0 B | ~100% |
+| uniq | 4.11 | 81.60 | 12.3 ms | 19.86x | 374.16 MB | 0 B | ~100% |
+| frequencies | 2.90 | 10.24 | 97.7 ms | 3.53x | 548.55 MB | 0.57 MB | 99.9% |
+| reverse | 889.19 | 891.81 | 1.12 ms | =Enum | 11.01 MB | 11.01 MB | -- |
+| dedup | 110.16 | 105.55 | 9.47 ms | =Enum | 16.87 MB | 16.87 MB | -- |
+| sum | 608.91 | 613.01 | 1.63 ms | =Enum | 0 B | 0 B | -- |
+| min | 623.59 | 623.84 | 1.60 ms | =Enum | 0 B | 0 B | -- |
+| max | 622.94 | 622.35 | 1.61 ms | =Enum | 0 B | 0 B | -- |
+| member? | 1,771 | 1,701 | 0.59 ms | =Enum | 0 B | 0 B | -- |
 
 ### One-shot: binary input
 
 | Function | Enum ips | FEnum ips | Avg time | Speedup | Enum memory | FEnum memory | Mem reduction |
 |---|---|---|---|---|---|---|---|
-| sort | 9.08 | 90.20 | 11.09 ms | 9.93x | 205.88 MB | 64 B | ~100% |
-| sort :desc | 9.01 | 90.04 | 11.11 ms | 10.00x | 220.49 MB | 64 B | ~100% |
-| reverse | 900.98 | 2,420.83 | 0.41 ms | 2.69x | 11.01 MB | 64 B | ~100% |
-| dedup | 132.57 | 337.47 | 2.96 ms | 2.55x | 16.94 MB | 64 B | ~100% |
-| uniq | 4.00 | 23.73 | 42.14 ms | 5.94x | 374.00 MB | 64 B | ~100% |
-| sum | 618.69 | 4,708.02 | 0.21 ms | 7.61x | 0 B | 0 B | -- |
-| min | 623.28 | 3,601.22 | 0.28 ms | 5.78x | 0 B | 0 B | -- |
-| max | 624.64 | 3,594.59 | 0.28 ms | 5.75x | 0 B | 0 B | -- |
-| member? | 1,680 | 4,700 | 212.64 μs | 2.80x | 0 B | 0 B | -- |
-| frequencies | 2.71 | 8.82 | 113.43 ms | 3.25x | 547.89 MB | 1.59 KB | ~100% |
+| sort | 9.12 | 88.10 | 11.4 ms | 9.66x | 218.34 MB | 64 B | ~100% |
+| sort :desc | 9.45 | 89.73 | 11.2 ms | 9.50x | 233.59 MB | 64 B | ~100% |
+| reverse | 889.19 | 2,430.39 | 0.41 ms | 2.73x | 11.01 MB | 64 B | ~100% |
+| dedup | 110.16 | 390.24 | 2.56 ms | 3.54x | 16.87 MB | 64 B | ~100% |
+| uniq | 4.11 | 146.86 | 6.81 ms | 35.73x | 374.16 MB | 64 B | ~100% |
+| sum | 608.91 | 10,983.34 | 0.091 ms | 18.04x | 0 B | 0 B | -- |
+| min | 623.59 | 6,475.15 | 0.154 ms | 10.38x | 0 B | 0 B | -- |
+| max | 622.94 | 6,483.33 | 0.154 ms | 10.41x | 0 B | 0 B | -- |
+| member? | 1,771 | 10,930.83 | 0.092 ms | 6.17x | 0 B | 0 B | -- |
+| frequencies | 2.90 | 10.63 | 94.1 ms | 3.67x | 548.55 MB | 1.59 KB | ~100% |
 
 ### Chain mode
 
 | Pipeline | Enum ips | FEnum ips | Enum avg | FEnum avg | Speedup | Enum memory | FEnum memory |
 |---|---|---|---|---|---|---|---|
-| sort + dedup + take | 9.27 | 48.97 | 107.8 ms | 20.4 ms | 5.28x | 237.48 MB | 0.002 MB |
-| sort + reverse + slice | 9.34 | 57.01 | 107.1 ms | 17.5 ms | 6.11x | 233.44 MB | 0.002 MB |
-| sort + uniq + sum | 2.59 | 16.99 | 385.7 ms | 58.9 ms | 6.55x | 592.79 MB | 0.0002 MB |
-| sort + dedup + frequencies | 2.91 | 8.60 | 343.6 ms | 116.2 ms | 2.96x | 586.74 MB | 0.56 MB |
+| sort + dedup + take | 8.59 | 52.81 | 116.4 ms | 18.9 ms | 6.15x | 236.45 MB | 0.002 MB |
+| sort + reverse + slice | 9.44 | 59.37 | 106.0 ms | 16.8 ms | 6.29x | 233.44 MB | 0.002 MB |
+| sort + uniq + sum | 2.80 | 35.29 | 357.2 ms | 28.3 ms | 12.61x | 592.79 MB | 0.0002 MB |
+| sort + dedup + frequencies | 3.28 | 9.29 | 304.6 ms | 107.7 ms | 2.83x | 586.74 MB | 0.57 MB |
 
 ### Chain mode: filter placement matters
 
@@ -152,11 +152,11 @@ Functions that take an Elixir callback (like `filter/2`) cause a Ref→list→Re
 
 | Variant | ips | Avg time | Speedup vs Enum |
 |---|---|---|---|
-| `Enum.filter \|> FEnum.new \|> sort \|> uniq \|> sum` | 25.70 | 38.9 ms | 4.56x |
-| `FEnum.new \|> FEnum.filter \|> sort \|> uniq \|> sum` | 20.75 | 48.2 ms | 3.62x |
-| `Enum.filter \|> Enum.sort \|> Enum.uniq \|> Enum.sum` | 5.63 | 177.5 ms | -- |
+| `Enum.filter \|> FEnum.new \|> sort \|> uniq \|> sum` | 40.81 | 24.5 ms | 6.21x |
+| `FEnum.new \|> FEnum.filter \|> sort \|> uniq \|> sum` | 32.58 | 30.7 ms | 4.96x |
+| `Enum.filter \|> Enum.sort \|> Enum.uniq \|> Enum.sum` | 6.57 | 152.1 ms | -- |
 
-Filtering **before** `new/1` is 24% faster than filtering **after** — it avoids the round-trip and feeds a smaller list into Rust. When your pipeline includes callback-based operations, keep them outside the chain boundaries where possible:
+Filtering **before** `new/1` is 25% faster than filtering **after** — it avoids the round-trip and feeds a smaller list into Rust. When your pipeline includes callback-based operations, keep them outside the chain boundaries where possible:
 
 ```elixir
 # Preferred: filter in Elixir, then enter the chain with less data
