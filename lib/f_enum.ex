@@ -17,6 +17,11 @@ defmodule FEnum do
 
   alias FEnum.{Native, Ref}
 
+  # Exclude Kernel.max/2 and Kernel.min/2 so we can define our own max/2 and
+  # min/2 that delegate to Enum (matching Enum's full API). The private helpers
+  # below that need integer comparison use Kernel.max/Kernel.min explicitly.
+  import Kernel, except: [max: 2, min: 2]
+
   # ---------------------------------------------------------------------------
   # Constructors / Terminators
   # ---------------------------------------------------------------------------
@@ -37,9 +42,10 @@ defmodule FEnum do
   @spec run(Ref.t()) :: list(integer())
   def run(%Ref{resource: resource}), do: Native.nif_to_list(resource)
 
-  @doc "Alias for `run/1`."
-  @spec to_list(Ref.t()) :: list(integer())
+  @doc "Converts to a list. For `FEnum.Ref`, materializes from Rust. For other enumerables, delegates to `Enum.to_list/1`."
+  @spec to_list(Ref.t() | Enumerable.t()) :: list()
   def to_list(%Ref{} = ref), do: run(ref)
+  def to_list(enumerable), do: Enum.to_list(enumerable)
 
   # Helpers to wrap NIF results into a Ref.
   # Use wrap_ref_same_len when the operation preserves length (sort, reverse).
@@ -60,7 +66,11 @@ defmodule FEnum do
   @spec sort(Ref.t() | list() | binary()) :: Ref.t() | list() | binary()
   def sort(%Ref{resource: r, length: len}), do: wrap_ref_same_len(Native.nif_sort_asc(r), len)
   def sort(bin) when is_binary(bin), do: Native.nif_sort_asc_binary(bin)
-  def sort(list) when is_list(list), do: Native.nif_sort_asc_list(list)
+  def sort(list) when is_list(list) do
+    Native.nif_sort_asc_list(list)
+  rescue
+    ArgumentError -> Enum.sort(list)
+  end
   def sort(enumerable), do: Enum.sort(enumerable)
 
   @doc "Sorts in the given order (`:asc` or `:desc`)."
@@ -69,8 +79,17 @@ defmodule FEnum do
   def sort(%Ref{resource: r, length: len}, :desc), do: wrap_ref_same_len(Native.nif_sort_desc(r), len)
   def sort(bin, :asc) when is_binary(bin), do: Native.nif_sort_asc_binary(bin)
   def sort(bin, :desc) when is_binary(bin), do: Native.nif_sort_desc_binary(bin)
-  def sort(list, :asc) when is_list(list), do: Native.nif_sort_asc_list(list)
-  def sort(list, :desc) when is_list(list), do: Native.nif_sort_desc_list(list)
+  def sort(list, :asc) when is_list(list) do
+    Native.nif_sort_asc_list(list)
+  rescue
+    ArgumentError -> Enum.sort(list, :asc)
+  end
+
+  def sort(list, :desc) when is_list(list) do
+    Native.nif_sort_desc_list(list)
+  rescue
+    ArgumentError -> Enum.sort(list, :desc)
+  end
   def sort(enumerable, order), do: Enum.sort(enumerable, order)
 
   @doc "Reverses the collection."
@@ -89,7 +108,11 @@ defmodule FEnum do
   @spec uniq(Ref.t() | list() | binary()) :: Ref.t() | list() | binary()
   def uniq(%Ref{resource: r}), do: wrap_ref(Native.nif_uniq(r))
   def uniq(bin) when is_binary(bin), do: Native.nif_uniq_binary(bin)
-  def uniq(list) when is_list(list), do: Native.nif_uniq_list(list)
+  def uniq(list) when is_list(list) do
+    Native.nif_uniq_list(list)
+  rescue
+    ArgumentError -> Enum.uniq(list)
+  end
   def uniq(enumerable), do: Enum.uniq(enumerable)
 
   # ---------------------------------------------------------------------------
@@ -190,26 +213,26 @@ defmodule FEnum do
   def slice(enumerable, range), do: Enum.slice(enumerable, range)
 
   defp range_to_start_count(first, last, _step, len) do
-    first = if first < 0, do: max(len + first, 0), else: first
+    first = if first < 0, do: Kernel.max(len + first, 0), else: first
     last = if last < 0, do: len + last, else: last
-    count = max(last - first + 1, 0)
+    count = Kernel.max(last - first + 1, 0)
     {first, count}
   end
 
   @doc "Takes `count` elements from the beginning (positive) or end (negative)."
   @spec take(Ref.t() | list() | binary(), integer()) :: Ref.t() | list() | binary()
   def take(%Ref{resource: r, length: len}, count) do
-    out_len = min(if(count >= 0, do: count, else: -count), len)
+    out_len = Kernel.min(if(count >= 0, do: count, else: -count), len)
     wrap_ref_same_len(Native.nif_take(r, count), out_len)
   end
 
   def take(bin, count) when is_binary(bin) and count >= 0 do
-    n = min(count * 8, byte_size(bin))
+    n = Kernel.min(count * 8, byte_size(bin))
     binary_part(bin, 0, n)
   end
 
   def take(bin, count) when is_binary(bin) do
-    n = min(-count * 8, byte_size(bin))
+    n = Kernel.min(-count * 8, byte_size(bin))
     binary_part(bin, byte_size(bin) - n, n)
   end
 
@@ -218,17 +241,17 @@ defmodule FEnum do
   @doc "Drops `count` elements from the beginning (positive) or end (negative)."
   @spec drop(Ref.t() | list() | binary(), integer()) :: Ref.t() | list() | binary()
   def drop(%Ref{resource: r, length: len}, count) do
-    out_len = max(len - min(if(count >= 0, do: count, else: -count), len), 0)
+    out_len = Kernel.max(len - Kernel.min(if(count >= 0, do: count, else: -count), len), 0)
     wrap_ref_same_len(Native.nif_drop(r, count), out_len)
   end
 
   def drop(bin, count) when is_binary(bin) and count >= 0 do
-    n = min(count * 8, byte_size(bin))
+    n = Kernel.min(count * 8, byte_size(bin))
     binary_part(bin, n, byte_size(bin) - n)
   end
 
   def drop(bin, count) when is_binary(bin) do
-    n = min(-count * 8, byte_size(bin))
+    n = Kernel.min(-count * 8, byte_size(bin))
     binary_part(bin, 0, byte_size(bin) - n)
   end
 
@@ -277,12 +300,16 @@ defmodule FEnum do
   @spec frequencies(Ref.t() | list() | binary()) :: map()
   def frequencies(%Ref{resource: r}), do: Native.nif_frequencies(r)
   def frequencies(bin) when is_binary(bin), do: Native.nif_frequencies_binary(bin)
-  def frequencies(list) when is_list(list), do: Native.nif_frequencies_list(list)
+  def frequencies(list) when is_list(list) do
+    Native.nif_frequencies_list(list)
+  rescue
+    ArgumentError -> Enum.frequencies(list)
+  end
   def frequencies(enumerable), do: Enum.frequencies(enumerable)
 
   @doc "Joins elements into a string with the given separator."
   @spec join(Ref.t() | list() | binary(), String.t()) :: String.t()
-  def join(collection, joiner \\ ",")
+  def join(collection, joiner \\ "")
   def join(%Ref{resource: r}, joiner), do: Native.nif_join(r, joiner)
   def join(bin, joiner) when is_binary(bin), do: Native.nif_join_binary(bin, joiner)
   def join(enumerable, joiner), do: Enum.join(enumerable, joiner)
@@ -420,4 +447,200 @@ defmodule FEnum do
   def group_by(%Ref{} = ref, fun), do: ref |> run() |> Enum.group_by(fun)
   def group_by(list, fun) when is_list(list), do: Enum.group_by(list, fun)
   def group_by(enumerable, fun), do: Enum.group_by(enumerable, fun)
+
+  # ---------------------------------------------------------------------------
+  # Delegated to Enum (full API compatibility)
+  # ---------------------------------------------------------------------------
+
+  @doc "Returns `true` if all elements are truthy."
+  defdelegate all?(enumerable), to: Enum
+
+  @doc "Returns `true` if any element is truthy."
+  defdelegate any?(enumerable), to: Enum
+
+  @doc "Returns the element at `index`, or `default` if out of bounds."
+  defdelegate at(enumerable, index, default), to: Enum
+
+  @doc "Splits the collection into chunks based on `fun` return value changes."
+  defdelegate chunk_by(enumerable, fun), to: Enum
+
+  @doc "Splits into chunks of `count` with `step` stride."
+  defdelegate chunk_every(enumerable, count, step), to: Enum
+
+  @doc "Splits into chunks of `count` with `step` stride and optional leftover padding."
+  defdelegate chunk_every(enumerable, count, step, leftover), to: Enum
+
+  @doc "Chunks the enumerable with before/after callbacks."
+  defdelegate chunk_while(enumerable, acc, chunk_fun, after_fun), to: Enum
+
+  @doc "Concatenates a list of enumerables into one list."
+  defdelegate concat(enumerables), to: Enum
+
+  @doc "Counts elements up to `limit`."
+  defdelegate count_until(enumerable, limit), to: Enum
+
+  @doc "Counts elements satisfying `fun` up to `limit`."
+  defdelegate count_until(enumerable, fun, limit), to: Enum
+
+  @doc "Removes consecutive duplicate elements as determined by `fun`."
+  defdelegate dedup_by(enumerable, fun), to: Enum
+
+  @doc "Drops every `nth` element."
+  defdelegate drop_every(enumerable, nth), to: Enum
+
+  @doc "Drops elements while `fun` returns a truthy value."
+  defdelegate drop_while(enumerable, fun), to: Enum
+
+  @doc "Returns `{:ok, element}` or `:error` for the element at `index`."
+  defdelegate fetch(enumerable, index), to: Enum
+
+  @doc "Finds the first element for which `fun` returns truthy, or `default`."
+  defdelegate find(enumerable, default, fun), to: Enum
+
+  @doc "Returns the first truthy value returned by `fun`, or `default`."
+  defdelegate find_value(enumerable, default, fun), to: Enum
+
+  @doc "Maps and reduces simultaneously, returning `{mapped_list, acc}`."
+  defdelegate flat_map_reduce(enumerable, acc, fun), to: Enum
+
+  @doc "Returns a map with keys from `key_fun` and values as counts."
+  defdelegate frequencies_by(enumerable, key_fun), to: Enum
+
+  @doc "Groups elements by `key_fun`, mapping values with `value_fun`."
+  defdelegate group_by(enumerable, key_fun, value_fun), to: Enum
+
+  @doc "Intersperses `separator` between each element."
+  defdelegate intersperse(enumerable, separator), to: Enum
+
+  @doc "Inserts each element of `enumerable` into `collectable` via `transform`."
+  defdelegate into(enumerable, collectable, transform), to: Enum
+
+  @doc "Maps every `nth` element with `fun`, passing others through unchanged."
+  defdelegate map_every(enumerable, nth, fun), to: Enum
+
+  @doc "Maps each element with `fun` and intersperses `separator` between results."
+  defdelegate map_intersperse(enumerable, separator, mapper), to: Enum
+
+  @doc "Maps each element with `mapper` and joins the result with default separator."
+  defdelegate map_join(enumerable, mapper), to: Enum
+
+  @doc "Maps each element with `mapper` and joins the result with `joiner`."
+  defdelegate map_join(enumerable, joiner, mapper), to: Enum
+
+  @doc "Returns the maximum element using `empty_fallback` if empty."
+  def max(enumerable, empty_fallback), do: Enum.max(enumerable, empty_fallback)
+
+  @doc "Returns the maximum element using `sorter` and `empty_fallback`."
+  def max(enumerable, sorter, empty_fallback), do: Enum.max(enumerable, sorter, empty_fallback)
+
+  @doc "Returns the element for which `fun` returns the largest value."
+  defdelegate max_by(enumerable, fun), to: Enum
+
+  @doc "Returns the element for which `fun` returns the largest value, using `sorter`."
+  defdelegate max_by(enumerable, fun, sorter), to: Enum
+
+  @doc "Returns the element for which `fun` returns the largest value, using `sorter` and `empty_fallback`."
+  defdelegate max_by(enumerable, fun, sorter, empty_fallback), to: Enum
+
+  @doc "Returns the minimum element using `empty_fallback` if empty."
+  def min(enumerable, empty_fallback), do: Enum.min(enumerable, empty_fallback)
+
+  @doc "Returns the minimum element using `sorter` and `empty_fallback`."
+  def min(enumerable, sorter, empty_fallback), do: Enum.min(enumerable, sorter, empty_fallback)
+
+  @doc "Returns the element for which `fun` returns the smallest value."
+  defdelegate min_by(enumerable, fun), to: Enum
+
+  @doc "Returns the element for which `fun` returns the smallest value, using `sorter`."
+  defdelegate min_by(enumerable, fun, sorter), to: Enum
+
+  @doc "Returns the element for which `fun` returns the smallest value, using `sorter` and `empty_fallback`."
+  defdelegate min_by(enumerable, fun, sorter, empty_fallback), to: Enum
+
+  @doc "Returns `{min, max}` tuple using `empty_fallback` if empty."
+  defdelegate min_max(enumerable, empty_fallback), to: Enum
+
+  @doc "Returns `{min_element, max_element}` where min/max are determined by `fun`."
+  defdelegate min_max_by(enumerable, fun), to: Enum
+
+  @doc "Returns `{min_element, max_element}` using `sorter`."
+  defdelegate min_max_by(enumerable, fun, sorter), to: Enum
+
+  @doc "Returns `{min_element, max_element}` using `sorter` and `empty_fallback`."
+  defdelegate min_max_by(enumerable, fun, sorter, empty_fallback), to: Enum
+
+  @doc "Returns the product of elements mapped through `fun`."
+  defdelegate product_by(enumerable, fun), to: Enum
+
+  @doc "Returns a random element from the enumerable."
+  defdelegate random(enumerable), to: Enum
+
+  @doc "Reduces the collection without an initial accumulator."
+  defdelegate reduce(enumerable, fun), to: Enum
+
+  @doc "Reduces while `fun` returns `{:cont, acc}`; stops on `{:halt, acc}`."
+  defdelegate reduce_while(enumerable, acc, fun), to: Enum
+
+  @doc "Reverses the collection, appending `tail` at the end."
+  defdelegate reverse(enumerable, tail), to: Enum
+
+  @doc "Reverses `count` elements starting at `start_index`."
+  defdelegate reverse_slice(enumerable, start_index, count), to: Enum
+
+  @doc "Applies running accumulation with `fun` starting from `acc`."
+  defdelegate scan(enumerable, acc, fun), to: Enum
+
+  @doc "Returns a shuffled list of the enumerable."
+  defdelegate shuffle(enumerable), to: Enum
+
+  @doc "Returns a subset starting at `start_index` for `amount` elements."
+  defdelegate slice(enumerable, start_index, amount), to: Enum
+
+  @doc "Moves elements at `range_or_single_index` to `insertion_index`."
+  defdelegate slide(enumerable, range_or_single_index, insertion_index), to: Enum
+
+  @doc "Sorts using the given `sorter` function."
+  defdelegate sort_by(enumerable, mapper, sorter), to: Enum
+
+  @doc "Splits into two lists at position `count`."
+  defdelegate split(enumerable, count), to: Enum
+
+  @doc "Splits into two lists at the first element for which `fun` returns false."
+  defdelegate split_while(enumerable, fun), to: Enum
+
+  @doc "Splits into `{truthy, falsy}` lists based on `fun`."
+  defdelegate split_with(enumerable, fun), to: Enum
+
+  @doc "Returns the sum of elements mapped through `fun`."
+  defdelegate sum_by(enumerable, fun), to: Enum
+
+  @doc "Takes every `nth` element."
+  defdelegate take_every(enumerable, nth), to: Enum
+
+  @doc "Takes `count` random elements from the enumerable."
+  defdelegate take_random(enumerable, count), to: Enum
+
+  @doc "Takes elements while `fun` returns a truthy value."
+  defdelegate take_while(enumerable, fun), to: Enum
+
+  @doc "Removes duplicate elements as determined by `fun`."
+  defdelegate uniq_by(enumerable, fun), to: Enum
+
+  @doc "Unzips a list of `{a, b}` tuples into `{[a], [b]}`."
+  defdelegate unzip(enumerable), to: Enum
+
+  @doc "Zips corresponding elements of a list of enumerables into tuples."
+  defdelegate zip(enumerables), to: Enum
+
+  @doc "Reduces over zipped enumerables with accumulator `acc`."
+  defdelegate zip_reduce(enumerables, acc, fun), to: Enum
+
+  @doc "Reduces over two enumerables zipped together with accumulator `acc`."
+  defdelegate zip_reduce(left, right, acc, fun), to: Enum
+
+  @doc "Zips enumerables and maps each tuple with `zip_fun`."
+  defdelegate zip_with(enumerables, zip_fun), to: Enum
+
+  @doc "Zips two enumerables and maps each pair with `zip_fun`."
+  defdelegate zip_with(enumerable1, enumerable2, zip_fun), to: Enum
 end

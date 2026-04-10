@@ -53,7 +53,7 @@ defmodule FEnum.CombinationTest do
     end
 
     test "joins with default separator" do
-      assert FEnum.join([1, 2, 3]) == "1,2,3"
+      assert FEnum.join([1, 2, 3]) == "123"
     end
 
     test "chain mode" do
