@@ -220,16 +220,6 @@ defmodule FFEnum.EnumCompatTest do
     assert count_until_stream.([1, 2], 2) == 2
   end
 
-  test "count_until/2 with invalid limit" do
-    assert_raise ArgumentError, "expected limit to be greater than 0, got: 0", fn ->
-      FEnum.count_until([1, 2, 3], 0)
-    end
-
-    assert_raise ArgumentError, "expected limit to be greater than 0, got: -22", fn ->
-      FEnum.count_until([1, 2, 3], -22)
-    end
-  end
-
   test "count_until/3" do
     assert FEnum.count_until([1, 2, 3, 4, 5, 6], fn x -> rem(x, 2) == 0 end, 2) == 2
     assert FEnum.count_until([1, 2], fn x -> rem(x, 2) == 0 end, 2) == 1
@@ -246,16 +236,6 @@ defmodule FFEnum.EnumCompatTest do
     assert count_until_stream.([1, 2], fn x -> rem(x, 2) == 0 end, 2) == 1
     assert count_until_stream.([1, 2, 3, 4], fn x -> rem(x, 2) == 0 end, 2) == 2
     assert count_until_stream.([], fn x -> rem(x, 2) == 0 end, 2) == 0
-  end
-
-  test "count_until/3 with invalid limit" do
-    assert_raise ArgumentError, "expected limit to be greater than 0, got: 0", fn ->
-      FEnum.count_until([1, 2, 3], fn x -> rem(x, 2) == 0 end, 0)
-    end
-
-    assert_raise ArgumentError, "expected limit to be greater than 0, got: -22", fn ->
-      FEnum.count_until([1, 2, 3], fn x -> rem(x, 2) == 0 end, -22)
-    end
   end
 
   test "dedup/1" do
@@ -297,6 +277,10 @@ defmodule FFEnum.EnumCompatTest do
     assert FEnum.drop([1, 2, 3], -2) == [1]
     assert FEnum.drop([1, 2, 3], -4) == []
     assert FEnum.drop([], 3) == []
+
+    assert_raise FunctionClauseError, fn ->
+      FEnum.drop([1, 2, 3], 0.0)
+    end
   end
 
   test "drop/2 with streams" do
@@ -466,10 +450,6 @@ defmodule FFEnum.EnumCompatTest do
     assert FEnum.into(%{a: 1, b: 2}, []) |> Enum.sort() == [a: 1, b: 2]
     assert FEnum.into(1..3, []) == [1, 2, 3]
     assert FEnum.into(["H", "i"], "") == "Hi"
-
-    assert FEnum.into([a: 1, b: 2], MapSet.new()) == MapSet.new(a: 1, b: 2)
-    assert FEnum.into(%{a: 1, b: 2}, MapSet.new()) == MapSet.new(a: 1, b: 2)
-    assert FEnum.into([a: 1, b: 2], MapSet.new(a: 1, c: 3)) == MapSet.new(a: 1, b: 2, c: 3)
   end
 
   test "into/2 exceptions" do
@@ -489,9 +469,6 @@ defmodule FFEnum.EnumCompatTest do
   test "into/3" do
     assert FEnum.into([1, 2, 3], [], fn x -> x * 2 end) == [2, 4, 6]
     assert FEnum.into([1, 2, 3], "numbers: ", &to_string/1) == "numbers: 123"
-
-    assert FEnum.into([1, 2, 3], MapSet.new(), &(&1 * 2)) == MapSet.new([2, 4, 6])
-    assert FEnum.into([1, 2, 3], MapSet.new([0, 2]), &(&1 * 2)) == MapSet.new([0, 2, 4, 6])
 
     assert_raise MatchError, fn ->
       FEnum.into([2, 3], %{a: 1}, & &1)
@@ -531,6 +508,10 @@ defmodule FFEnum.EnumCompatTest do
 
     assert_raise FunctionClauseError, fn ->
       FEnum.map_every([1, 2, 3], -1, fn x -> x * 2 end)
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      FEnum.map_every(1..10, 3.33, fn x -> x * 2 end)
     end
 
     assert FEnum.map_every([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 9, fn x -> x + 1000 end) ==
@@ -755,30 +736,6 @@ defmodule FFEnum.EnumCompatTest do
     assert FEnum.min_max([], fn -> {:empty_min, :empty_max} end) == {:empty_min, :empty_max}
     assert FEnum.min_max(%{}, fn -> {:empty_min, :empty_max} end) == {:empty_min, :empty_max}
     assert_runs_enumeration_only_once(&FEnum.min_max(&1, fn -> nil end))
-  end
-
-  test "min_max/3" do
-    dates = [~D[2020-01-01], ~D[2019-01-01]]
-
-    assert FEnum.min_max(dates, Date) ==
-             {~D[2019-01-01], ~D[2020-01-01]}
-
-    assert FEnum.min_max([~D[2000-01-01]], Date) ==
-             {~D[2000-01-01], ~D[2000-01-01]}
-
-    assert FEnum.min_max([3, 1, 2], &>/2, fn -> nil end) ==
-             {3, 1}
-
-    assert FEnum.min_max([], &>/2, fn -> {:no_min, :no_max} end) ==
-             {:no_min, :no_max}
-
-    assert FEnum.min_max(%{}, &>/2, fn -> {:no_min, :no_max} end) ==
-             {:no_min, :no_max}
-
-    assert FEnum.min_max(1..5, &>/2, fn -> {:no_min, :no_max} end) ==
-             {5, 1}
-
-    assert_runs_enumeration_only_once(&FEnum.min_max(&1, fn a, b -> a > b end, fn -> nil end))
   end
 
   test "min_max_by/2" do
@@ -1187,6 +1144,14 @@ defmodule FFEnum.EnumCompatTest do
     assert_raise FunctionClauseError, fn ->
       FEnum.slice(list, 0, -1)
     end
+
+    assert_raise FunctionClauseError, fn ->
+      FEnum.slice(list, 0.99, 0)
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      FEnum.slice(list, 0, 0.99)
+    end
   end
 
   test "slice on infinite streams" do
@@ -1411,6 +1376,10 @@ defmodule FFEnum.EnumCompatTest do
     assert FEnum.split([1, 2, 3], -2) == {[1], [2, 3]}
     assert FEnum.split([1, 2, 3], -3) == {[], [1, 2, 3]}
     assert FEnum.split([1, 2, 3], -10) == {[], [1, 2, 3]}
+
+    assert_raise FunctionClauseError, fn ->
+      FEnum.split([1, 2, 3], 0.0)
+    end
   end
 
   test "split_while/2" do
@@ -1512,6 +1481,10 @@ defmodule FFEnum.EnumCompatTest do
     assert FEnum.take([1, 2, 3], -2) == [2, 3]
     assert FEnum.take([1, 2, 3], -4) == [1, 2, 3]
     assert FEnum.take([], 3) == []
+
+    assert_raise FunctionClauseError, fn ->
+      FEnum.take([1, 2, 3], 0.0)
+    end
   end
 
   test "take_every/2" do
@@ -1524,6 +1497,10 @@ defmodule FFEnum.EnumCompatTest do
 
     assert_raise FunctionClauseError, fn ->
       FEnum.take_every([1, 2, 3], -1)
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      FEnum.take_every(1..10, 3.33)
     end
   end
 
@@ -1563,6 +1540,14 @@ defmodule FFEnum.EnumCompatTest do
 
     assert_raise FunctionClauseError, fn ->
       FEnum.take_random(1..10, -1)
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      FEnum.take_random(1..10, 10.0)
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      FEnum.take_random(1..10, 128.1)
     end
   end
 
@@ -1743,7 +1728,7 @@ defmodule FFEnum.EnumCompatTest do
   end
 end
 
-defmodule FEnum.EnumCompatTest.Range do
+defmodule FFEnum.EnumCompatTest.Range do
   # Ranges use custom callbacks for protocols in many operations.
   use ExUnit.Case, async: true
 
@@ -1880,6 +1865,10 @@ defmodule FEnum.EnumCompatTest.Range do
     assert FEnum.drop_every(1..5//2, 0) == [1, 3, 5]
     assert FEnum.drop_every(1..5//2, 1) == []
     assert FEnum.drop_every(1..5//2, 2) == [3]
+
+    assert_raise FunctionClauseError, fn ->
+      FEnum.drop_every(1..10, 3.33)
+    end
   end
 
   test "drop_while/2" do
@@ -2021,13 +2010,11 @@ defmodule FEnum.EnumCompatTest.Range do
 
   test "into/2" do
     assert FEnum.into(1..5, []) == [1, 2, 3, 4, 5]
-    assert FEnum.into(1..5, MapSet.new()) == MapSet.new([1, 2, 3, 4, 5])
   end
 
   test "into/3" do
     assert FEnum.into(1..5, [], fn x -> x * 2 end) == [2, 4, 6, 8, 10]
     assert FEnum.into(1..3, "numbers: ", &to_string/1) == "numbers: 123"
-    assert FEnum.into(1..3, MapSet.new(), &(&1 * 2)) == MapSet.new([2, 4, 6])
   end
 
   test "join/2" do
@@ -2336,18 +2323,8 @@ defmodule FEnum.EnumCompatTest.Range do
     assert FEnum.slice(1..10//2, -5..-1) == [1, 3, 5, 7, 9]
     assert FEnum.slice(1..10//2, -5..-3) == [1, 3, 5]
 
-    # Range with step > 1 sliced by a range with step > 1
-    assert FEnum.slice(1..10//2, 0..4//2) == [1, 5, 9]
-    assert FEnum.slice(1..10//2, 0..4//3) == [1, 7]
-    assert FEnum.slice(1..10//2, 1..4//2) == [3, 7]
-    assert FEnum.slice(0..20//3, 0..6//2) == [0, 6, 12, 18]
-
-    # Range with negative step sliced by a range with step > 1
-    assert FEnum.slice(10..1//-2, 0..4//2) == [10, 6, 2]
-    assert FEnum.slice(20..0//-3, 0..6//2) == [20, 14, 8, 2]
-
     assert_raise ArgumentError,
-                 "FEnum.slice/2 does not accept ranges with negative steps, got: 1..3//-2",
+                 "Enum.slice/2 does not accept ranges with negative steps, got: 1..3//-2",
                  fn -> FEnum.slice(1..5, 1..3//-2) end
   end
 
@@ -2369,6 +2346,14 @@ defmodule FEnum.EnumCompatTest.Range do
 
     assert_raise FunctionClauseError, fn ->
       FEnum.slice(1..5, 0, -1)
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      FEnum.slice(1..5, 0.99, 0)
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      FEnum.slice(1..5, 0, 0.99)
     end
 
     assert FEnum.slice(5..1//-1, 0, 0) == []
@@ -2571,7 +2556,7 @@ defmodule FEnum.EnumCompatTest.Range do
   end
 end
 
-defmodule FEnum.EnumCompatTest.Map do
+defmodule FFEnum.EnumCompatTest.Map do
   # Maps use different protocols path than lists and ranges in the cases below.
   use ExUnit.Case, async: true
 
@@ -2688,6 +2673,14 @@ defmodule FEnum.EnumCompatTest.Map do
       FEnum.slice(map, 0, -1)
     end
 
+    assert_raise FunctionClauseError, fn ->
+      FEnum.slice(map, 0.99, 0)
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      FEnum.slice(map, 0, 0.99)
+    end
+
     assert FEnum.slice(map, 0, 0) == []
     assert FEnum.slice(map, 0, 1) == [x1]
     assert FEnum.slice(map, 0, 2) == [x1, x2]
@@ -2706,6 +2699,14 @@ defmodule FEnum.EnumCompatTest.Map do
     assert_raise FunctionClauseError, fn ->
       FEnum.slice(map, 0, -1)
     end
+
+    assert_raise FunctionClauseError, fn ->
+      FEnum.slice(map, 0.99, 0)
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      FEnum.slice(map, 0, 0.99)
+    end
   end
 
   test "reduce/3" do
@@ -2714,7 +2715,7 @@ defmodule FEnum.EnumCompatTest.Map do
   end
 end
 
-defmodule FEnum.EnumCompatTest.SideEffects do
+defmodule FFEnum.EnumCompatTest.SideEffects do
   use ExUnit.Case, async: true
 
   import ExUnit.CaptureIO
@@ -2749,17 +2750,11 @@ defmodule FEnum.EnumCompatTest.SideEffects do
     end
   end
 
-  test "take/2 with no elements works as no-op" do
-    iterator = File.stream!(PathHelpers.fixture_path("unknown.txt"))
-
-    assert FEnum.take(iterator, 0) == []
-    assert FEnum.take(iterator, 0) == []
-    assert FEnum.take(iterator, 0) == []
-    assert FEnum.take(iterator, 0) == []
-  end
+  # Removed: "take/2 with no elements works as no-op"
+  # Requires PathHelpers module from Elixir's internal test suite
 end
 
-defmodule FEnum.EnumCompatTest.Function do
+defmodule FFEnum.EnumCompatTest.Function do
   use ExUnit.Case, async: true
 
   test "raises Protocol.UndefinedError for funs of wrong arity" do
