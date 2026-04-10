@@ -41,12 +41,6 @@ All functions now accept packed binaries (`<<i::signed-native-64>>` format) in a
 - Full compatibility with Elixir v1.19's official Enum test suite (227 tests, 0 failures).
 - 422 total tests across FEnum-specific and Enum compatibility suites.
 
-### Other
-
-- Prepared for Hex publishing with `ex_doc`, package metadata, and proper file list.
-- Added benchmark suites: `bench/fenum_bench.exs` (main) and `bench/scaling_bench.exs` (input size scaling from 100 to 1M).
-- Fixed `join/1` default separator to `""` (matching `Enum.join/1`, was `","`).
-
 ## v0.1.0
 
 Initial release with core FEnum functionality:
