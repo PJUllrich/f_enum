@@ -1,10 +1,8 @@
-# FEnum
+# Faster Enum
 
 A drop-in replacement for `Enum` backed by Rust NIFs. Simply rename `Enum` to `FEnum` and your integer-list code gets up to 20x faster. For chained operations, you can get even bigger speedups.
 
-All you need to do is to replace `Enum` with `FEnum` and your list and binary operations will run ✨magically✨ faster for many use-cases.
-
-This library shines on larger collections, but many functions (`uniq`, `frequencies`, binary `sum`/`min`/`max`/`member?`, and chains) are faster than `Enum` even at n = 100. The ones with a real threshold are `sort` on lists (~n ≥ 1,000) and `reverse`/`dedup` on binaries (~n ≥ 10,000). See [Crossover thresholds](#crossover-thresholds) below for the full table.
+This library shines on larger collections, but many functions (`uniq`, `frequencies`, binary `sum`/`min`/`max`/`member?`, and chains) are faster than `Enum` even at n = 100. The ones with a real threshold are `sort` on lists (~n ≥ 1,000) and `reverse`/`dedup` on binaries (~n ≥ 10,000).
 
 ## Installation
 
