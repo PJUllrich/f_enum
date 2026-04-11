@@ -4,7 +4,7 @@ A drop-in replacement for `Enum` backed by Rust NIFs. Simply rename `Enum` to `F
 
 All you need to do is to replace `Enum` with `FEnum` and your list and binary operations will run ✨magically✨ faster for many use-cases.
 
-This library is really only needed if you work with very large lists or binaries though. The built-in Enum is just fine for any lists below 1000 elements.
+This library shines on larger collections, but many functions (`uniq`, `frequencies`, binary `sum`/`min`/`max`/`member?`, and chains) are faster than `Enum` even at n = 100. The ones with a real threshold are `sort` on lists (~n ≥ 1,000) and `reverse`/`dedup` on binaries (~n ≥ 10,000). See [Crossover thresholds](#crossover-thresholds) below for the full table.
 
 ## Installation
 
@@ -88,28 +88,24 @@ FEnum.sum(1..100)               #=> 5050
 FEnum.map(%{a: 1}, &elem(&1, 1))  #=> [1]
 ```
 
-## How it works
-
-FEnum has three input modes. The same function handles all three via pattern matching:
-
-```elixir
-FEnum.sort([3, 1, 2])             # List: uses NIF or delegates to Enum
-FEnum.sort(<<_::binary>>)         # Binary: binary -> binary (near-zero copy to NIF)
-FEnum.sort(%FEnum.Ref{} = ref)   # Chain: Ref -> Ref (data stays in Rust)
-FEnum.sort(1..10)                 # Fallback: delegates to Enum
-```
-
-**Lists** go through Rustler's list protocol for expensive operations (sort, uniq, frequencies) where the Rust algorithm beats the BEAM despite the decode cost. Simple traversals (sum, min, max, reverse, member?) delegate straight to `Enum` because the BEAM's JIT is already optimal for single-pass operations.
-
-**Packed binaries** (`<<i::signed-native-64>>` format) are passed to the NIF by reference with near-zero copy. This is the fastest path.
-
-**Chain mode** converts once at the boundaries with `new/1` and `run/1`. Between those calls, data stays in a Rust `Vec<i64>` behind a `ResourceArc` -- no conversion overhead between operations.
-
 ## Benchmarks
 
 All benchmarks use 1M random integers. Run them yourself with `mix run bench/fenum_bench.exs`.
 
-List input delegates to `Enum` for simple traversals (sum, min, max, reverse, member?, dedup) where the BEAM's JIT is already optimal, and uses Rust NIFs for expensive operations (sort, uniq, frequencies). Binary input always uses the NIF via zero-copy reference passing.
+### Which functions FEnum actually speeds up
+
+FEnum only reaches for Rust when the BEAM's JIT can't keep up, so not every function in the module is meaningfully faster than `Enum`.
+
+**For list input**, only these four go through a NIF:
+
+- `sort/1`, `sort/2`
+- `uniq/1`
+- `frequencies/1`
+- any of the above in a chain pipeline (everything after `FEnum.new/1`)
+
+Every other one-shot that takes a list — `reverse/1`, `dedup/1`, `sum/1`, `product/1`, `min/1`, `max/1`, `min_max/1`, `member?/2`, and the access/slicing helpers (`at/2`, `slice/2`, `take/2`, `drop/2`, `count/1`, `join/2`, `with_index/1`, `zip/2`, `chunk_every/2`, `into/2`) — unconditionally forwards to `Enum`. Calling `FEnum.sum([1, 2, 3])` is literally `Enum.sum([1, 2, 3])` with one extra function dispatch. If your op isn't in the list above and your input is a list, `FEnum` is just a wrapper and there's no speedup to be had — stick with `Enum`, or enter chain mode with `FEnum.new/1`, or pack your integers into an `<<i::signed-native-64>>` binary.
+
+**For binary input**, every op uses a NIF and beats calling `Enum` after unpacking. This is the fastest path across the board.
 
 ### One-shot: list input
 
@@ -180,19 +176,26 @@ list
 |> FEnum.sum()
 ```
 
-## Supported functions
+## How it works
 
-### Tier 1 -- Pure NIF (fastest)
+FEnum has three input modes. The same function handles all three via pattern matching:
 
-Functions that run entirely in Rust with no Elixir callbacks:
+```elixir
+FEnum.sort([3, 1, 2])             # List: uses NIF or delegates to Enum
+FEnum.sort(<<_::binary>>)         # Binary: binary -> binary (near-zero copy to NIF)
+FEnum.sort(%FEnum.Ref{} = ref)   # Chain: Ref -> Ref (data stays in Rust)
+FEnum.sort(1..10)                 # Fallback: delegates to Enum
+```
 
-`sort/1`, `sort/2`, `reverse/1`, `dedup/1`, `uniq/1`, `sum/1`, `product/1`, `min/1`, `max/1`, `min_max/1`, `count/1`, `at/2`, `fetch!/2`, `slice/2`, `take/2`, `drop/2`, `member?/2`, `empty?/1`, `concat/2`, `frequencies/1`, `join/2`, `with_index/1`, `zip/2`, `chunk_every/2`, `into/2`
+**Lists** go through Rustler's list protocol for expensive operations (sort, uniq, frequencies) where the Rust algorithm beats the BEAM despite the decode cost. Simple traversals (sum, min, max, reverse, member?) delegate straight to `Enum` because the BEAM's JIT is already optimal for single-pass operations.
 
-### Tier 2 -- Hybrid (NIF + Elixir callback)
+**Packed binaries** (`<<i::signed-native-64>>` format) are passed to the NIF by reference with near-zero copy. This is the fastest path.
 
-Functions that take an Elixir fun. In chain mode, data round-trips through Elixir for the callback step; Tier 1 steps before and after are still zero-copy:
+**Chain mode** converts once at the boundaries with `new/1` and `run/1`. Between those calls, data stays in a Rust `Vec<i64>` behind a `ResourceArc` -- no conversion overhead between operations.
 
-`filter/2`, `reject/2`, `map/2`, `flat_map/2`, `reduce/3`, `map_reduce/3`, `scan/2`, `find/2`, `find_index/2`, `find_value/2`, `any?/2`, `all?/2`, `count/2`, `sort_by/2`, `each/2`, `group_by/2`
+### Full scaling tables
+
+The crossover summary above is distilled from a per-size sweep for every op. For the full data — iterations-per-second and average run time at n ∈ {100, 1,000, 10,000, 100,000, 1,000,000}, split into **List input** (apples-to-apples: `Enum.<op>` vs `FEnum.<op>`) and **Binary input** (`FEnum.<op>` on a packed `i64` binary with its speedup vs. the fastest list variant) — see [`bench/rankings.md`](bench/rankings.md). Regenerate it with `mix run bench/scaling_bench.exs` followed by `mix run bench/gen_rankings.exs`.
 
 ## Protocols
 

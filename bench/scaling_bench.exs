@@ -5,32 +5,50 @@
 # Run all:        mix run bench/scaling_bench.exs
 # Run specific:   mix run bench/scaling_bench.exs -- sort
 #                 mix run bench/scaling_bench.exs -- "sort" "uniq"
+#
+# Each iteration receives freshly generated random data via before_each
+# to prevent any result caching across iterations.
 
 sizes = [100, 1_000, 10_000, 100_000, 1_000_000]
 
-# Common Benchee options
-opts = [
+# Common Benchee options (before_each added per-run below)
+base_opts = [
   warmup: 1,
   time: 3,
   memory_time: 1,
-  print: [configuration: false, benchmarking: false],
+  print: [configuration: true, benchmarking: true],
   formatters: [
-    {Benchee.Formatters.Console, comparison: true, extended_statistics: false},
-    {Benchee.Formatters.HTML, file: "bench/output/scaling.html", auto_open: false}
+    {Benchee.Formatters.Console, comparison: true, extended_statistics: true}
   ]
 ]
 
-# Pre-generate data for each size
-data =
+# Number of elements to randomize each iteration to prevent caching
+jitter = 1_000
+
+# Pre-generate static tails for each size (size - jitter elements, or empty for small sizes)
+base_tails =
   Map.new(sizes, fn size ->
-    list = Enum.map(1..size, fn _ -> :rand.uniform(size) end)
-    binary = for i <- list, into: <<>>, do: <<i::signed-native-64>>
-    {size, %{list: list, binary: binary}}
+    tail_size = max(size - jitter, 0)
+    {size, Enum.map(1..max(tail_size, 1)//1, fn _ -> :rand.uniform(size) end)}
   end)
 
-inputs = Map.new(sizes, fn size -> {"#{size}", data[size]} end)
+# Inputs pass the size so before_each can look up the tail and prepend fresh values
+inputs = Map.new(sizes, fn size -> {"#{size}", size} end)
 
-IO.puts("Data generated for sizes: #{Enum.join(sizes, ", ")}\n")
+gen_data = fn size ->
+  j = min(jitter, size)
+  tail = base_tails[size]
+
+  # Prepend fresh random values to the static tail — O(jitter) via cons
+  list = Enum.reduce(1..j, tail, fn _, acc -> [:rand.uniform(size) | acc] end)
+
+  binary = for i <- list, into: <<>>, do: <<i::signed-native-64>>
+  %{list: list, binary: binary}
+end
+
+IO.puts(
+  "Data generated for sizes: #{Enum.join(sizes, ", ")} (up to #{jitter} elements refreshed each iteration)\n"
+)
 
 # ---------------------------------------------------------------------------
 # Define benchmarks
@@ -140,7 +158,24 @@ benchmarks =
 # ---------------------------------------------------------------------------
 
 Enum.each(benchmarks, fn {title, scenarios} ->
-  Benchee.run(scenarios, [title: title, inputs: inputs] ++ opts)
+  slug = title |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, "_") |> String.trim("_")
+
+  opts =
+    base_opts ++
+      [
+        title: title,
+        inputs: inputs,
+        before_each: gen_data,
+        print: [configuration: false, benchmarking: true],
+        formatters:
+          base_opts[:formatters] ++
+            [
+              {Benchee.Formatters.HTML,
+               file: "bench/output/#{slug}/scaling.html", auto_open: false}
+            ]
+      ]
+
+  Benchee.run(scenarios, opts)
 end)
 
 IO.puts("\nScaling benchmarks complete!")
