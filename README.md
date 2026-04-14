@@ -102,7 +102,7 @@ FEnum.max(binary)      #=> 5
 
 ### Chain mode
 
-For multi-step pipelines, keep data in Rust between operations:
+Start a chain with `FEnum.new/1` and finish it with `FEnum.run/1`. Every operation in between passes only a reference to the data (kept in Rust), not the data itself — so there is no conversion overhead between steps.
 
 ```elixir
 [3, 1, 4, 1, 5, 9, 2, 6, 5, 3]
