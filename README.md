@@ -2,7 +2,7 @@
 
 A drop-in replacement for `Enum` backed by Rust NIFs. Simply rename `Enum` to `FEnum` and your integer-list code gets up to 20x faster. For chained operations, you can get even bigger speedups.
 
-This library shines on larger collections, but many functions (`uniq`, `frequencies`, binary `sum`/`min`/`max`/`member?`, and chains) are faster than `Enum` even at n = 100. The ones with a real threshold are `sort` on lists (~n ≥ 1,000) and `reverse`/`dedup` on binaries (~n ≥ 10,000).
+This library shines on larger collections, but many functions are faster than `Enum` even at n = 100.
 
 ## Installation
 
@@ -14,7 +14,48 @@ def deps do
 end
 ```
 
-Requires a Rust toolchain (`rustup`). Rustler compiles the NIF automatically on `mix compile`.
+### One-shot: list input
+
+| Function | Enum ips | FEnum ips | Speedup | Avg time |
+|---|---|---|---|---|
+| sort | 9.61 | 54.39 | 5.66x | 18.4 ms |
+| sort :desc | 9.54 | 54.30 | 5.69x | 18.4 ms |
+| uniq | 4.08 | 78.11 | 19.14x | 12.8 ms |
+| frequencies | 2.90 | 12.03 | 4.15x | 83.1 ms |
+| reverse | 893.89 | 877.78 | =Enum | 1.14 ms |
+| dedup | 131.75 | 131.31 | =Enum | 7.62 ms |
+| sum | 614.94 | 615.51 | =Enum | 1.62 ms |
+| min | 628.59 | 629.53 | =Enum | 1.59 ms |
+| max | 630.67 | 626.66 | =Enum | 1.60 ms |
+| member? | 1,952 | 1,910 | =Enum | 0.52 ms |
+
+### One-shot: binary input
+
+| Function | Enum ips | FEnum ips | Speedup | Avg time |
+|---|---|---|---|---|
+| sort | 9.61 | 89.68 | 9.33x | 11.2 ms |
+| sort :desc | 9.54 | 90.33 | 9.47x | 11.1 ms |
+| reverse | 893.89 | 2,432.77 | 2.72x | 0.41 ms |
+| dedup | 131.75 | 391.13 | 2.97x | 2.56 ms |
+| uniq | 4.08 | 158.62 | 38.88x | 6.30 ms |
+| sum | 614.94 | 11,291.10 | 18.36x | 0.089 ms |
+| min | 628.59 | 6,581.04 | 10.47x | 0.152 ms |
+| max | 630.67 | 6,565.04 | 10.41x | 0.152 ms |
+| member? | 1,952 | 10,951.10 | 5.61x | 0.091 ms |
+| frequencies | 2.90 | 12.77 | 4.40x | 78.3 ms |
+
+### Chain mode
+
+| Pipeline | Enum ips | FEnum ips | Speedup | Enum avg | FEnum avg |
+|---|---|---|---|---|---|
+| sort + dedup + take | 8.29 | 53.50 | 6.45x | 120.7 ms | 18.7 ms |
+| sort + reverse + slice | 9.78 | 59.82 | 6.12x | 102.3 ms | 16.7 ms |
+| sort + uniq + sum | 2.87 | 36.43 | 12.70x | 348.8 ms | 27.5 ms |
+| sort + dedup + frequencies | 3.20 | 10.89 | 3.40x | 312.3 ms | 91.8 ms |
+
+### Full scaling tables
+
+For the full data see [`bench/rankings.md`](bench/rankings.md). Regenerate it with `mix run bench/scaling_bench.exs` followed by `mix run bench/gen_rankings.exs`.
 
 ## Usage
 
@@ -105,45 +146,6 @@ Every other one-shot that takes a list — `reverse/1`, `dedup/1`, `sum/1`, `pro
 
 **For binary input**, every op uses a NIF and beats calling `Enum` after unpacking. This is the fastest path across the board.
 
-### One-shot: list input
-
-| Function | Enum ips | FEnum ips | Avg time | Speedup | Enum memory | FEnum memory | Mem reduction |
-|---|---|---|---|---|---|---|---|
-| sort | 9.61 | 54.39 | 18.4 ms | 5.66x | 218.34 MB | 0 B | ~100% |
-| sort :desc | 9.54 | 54.30 | 18.4 ms | 5.69x | 233.59 MB | 0 B | ~100% |
-| uniq | 4.08 | 78.11 | 12.8 ms | 19.14x | 374.16 MB | 0 B | ~100% |
-| frequencies | 2.90 | 12.03 | 83.1 ms | 4.15x | 548.55 MB | 0.57 MB | 99.9% |
-| reverse | 893.89 | 877.78 | 1.14 ms | =Enum | 11.01 MB | 11.01 MB | -- |
-| dedup | 131.75 | 131.31 | 7.62 ms | =Enum | 16.87 MB | 16.87 MB | -- |
-| sum | 614.94 | 615.51 | 1.62 ms | =Enum | 0 B | 0 B | -- |
-| min | 628.59 | 629.53 | 1.59 ms | =Enum | 0 B | 0 B | -- |
-| max | 630.67 | 626.66 | 1.60 ms | =Enum | 0 B | 0 B | -- |
-| member? | 1,952 | 1,910 | 0.52 ms | =Enum | 0 B | 0 B | -- |
-
-### One-shot: binary input
-
-| Function | Enum ips | FEnum ips | Avg time | Speedup | Enum memory | FEnum memory | Mem reduction |
-|---|---|---|---|---|---|---|---|
-| sort | 9.61 | 89.68 | 11.2 ms | 9.33x | 218.34 MB | 64 B | ~100% |
-| sort :desc | 9.54 | 90.33 | 11.1 ms | 9.47x | 233.59 MB | 64 B | ~100% |
-| reverse | 893.89 | 2,432.77 | 0.41 ms | 2.72x | 11.01 MB | 64 B | ~100% |
-| dedup | 131.75 | 391.13 | 2.56 ms | 2.97x | 16.87 MB | 64 B | ~100% |
-| uniq | 4.08 | 158.62 | 6.30 ms | 38.88x | 374.16 MB | 64 B | ~100% |
-| sum | 614.94 | 11,291.10 | 0.089 ms | 18.36x | 0 B | 0 B | -- |
-| min | 628.59 | 6,581.04 | 0.152 ms | 10.47x | 0 B | 0 B | -- |
-| max | 630.67 | 6,565.04 | 0.152 ms | 10.41x | 0 B | 0 B | -- |
-| member? | 1,952 | 10,951.10 | 0.091 ms | 5.61x | 0 B | 0 B | -- |
-| frequencies | 2.90 | 12.77 | 78.3 ms | 4.40x | 548.55 MB | 1.59 KB | ~100% |
-
-### Chain mode
-
-| Pipeline | Enum ips | FEnum ips | Enum avg | FEnum avg | Speedup | Enum memory | FEnum memory |
-|---|---|---|---|---|---|---|---|
-| sort + dedup + take | 8.29 | 53.50 | 120.7 ms | 18.7 ms | 6.45x | 236.45 MB | 0.002 MB |
-| sort + reverse + slice | 9.78 | 59.82 | 102.3 ms | 16.7 ms | 6.12x | 233.44 MB | 0.002 MB |
-| sort + uniq + sum | 2.87 | 36.43 | 348.8 ms | 27.5 ms | 12.70x | 592.79 MB | 0.0002 MB |
-| sort + dedup + frequencies | 3.20 | 10.89 | 312.3 ms | 91.8 ms | 3.40x | 586.74 MB | 0.57 MB |
-
 ### Chain mode: filter placement matters
 
 Functions that take an Elixir callback (like `filter/2`) cause a Ref→list→Ref round-trip in chain mode. Where you place them in the pipeline affects performance:
@@ -190,10 +192,6 @@ FEnum.sort(1..10)                 # Fallback: delegates to Enum
 **Packed binaries** (`<<i::signed-native-64>>` format) are passed to the NIF by reference with near-zero copy. This is the fastest path.
 
 **Chain mode** converts once at the boundaries with `new/1` and `run/1`. Between those calls, data stays in a Rust `Vec<i64>` behind a `ResourceArc` -- no conversion overhead between operations.
-
-### Full scaling tables
-
-The crossover summary above is distilled from a per-size sweep for every op. For the full data — iterations-per-second and average run time at n ∈ {100, 1,000, 10,000, 100,000, 1,000,000}, split into **List input** (apples-to-apples: `Enum.<op>` vs `FEnum.<op>`) and **Binary input** (`FEnum.<op>` on a packed `i64` binary with its speedup vs. the fastest list variant) — see [`bench/rankings.md`](bench/rankings.md). Regenerate it with `mix run bench/scaling_bench.exs` followed by `mix run bench/gen_rankings.exs`.
 
 ## Protocols
 
