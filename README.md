@@ -14,6 +14,10 @@ def deps do
 end
 ```
 
+## Benchmarks
+
+All benchmarks use 1,000,000 random integers. Run them yourself with `mix run bench/fenum_bench.exs`.
+
 ### One-shot: list input
 
 | Function | Enum ips | FEnum ips | Speedup | Avg time |
