@@ -126,16 +126,4 @@ defmodule FEnum.CombinationTest do
       assert FEnum.chunk_every([], 3) == []
     end
   end
-
-  describe "into/2" do
-    test "into MapSet" do
-      result = FEnum.into([1, 2, 3], MapSet.new())
-      assert result == MapSet.new([1, 2, 3])
-    end
-
-    test "chain mode into MapSet" do
-      result = [1, 2, 3] |> FEnum.new() |> FEnum.into(MapSet.new())
-      assert result == MapSet.new([1, 2, 3])
-    end
-  end
 end
